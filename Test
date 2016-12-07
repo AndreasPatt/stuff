@@ -142,7 +142,7 @@ function Add-User {
 
           
   try {            
-    New-ADUser -Name "$Displayname" -DisplayName "$Displayname" -SamAccountName $SAM -UserPrincipalName $UPN -GivenName "$UserFirstname" -Surname "$UserLastname" -Description "$Description" -AccountPassword (ConvertTo-SecureString -String $Password -AsPlainText -Force) -Server $DomainControllerFQDN -Path "$OU" -credential $creds -OtherAttributes $otherAttributes -EmailAddress $user.Email 
+    New-ADUser -Name "$Displayname" -DisplayName "$Displayname" -SamAccountName $SAM -UserPrincipalName $UPN -GivenName "$UserFirstname" -Surname "$UserLastname" -Description "$Description" -AccountPassword (ConvertTo-SecureString -String $Password -AsPlainText -Force) -Server $DomainControllerFQDN -Path "$OU" -credential $creds -OtherAttributes $otherAttributes -EmailAddress $user.Email -Enabled $true
   	
   }
 
@@ -487,30 +487,39 @@ $InvokeGetADuser = {
   
   
   
-  $Check = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock $InvokeGetADuser  -args $user.GID -ErrorAction Stop
+$Check = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock $InvokeGetADuser  -args $user.GID -ErrorAction Stop
   
-  if ($check -eq 'absent')
-  {
-    $output = New-PersonalUser -user $user
-  }
-  else
-  {
-    $Output = 'User was already present'
-  }
-  Set-Attr $result 'User' $output
+if ($check -eq 'absent')
+{
+  $output = New-PersonalUser -user $user
+}
+else
+{
+  $Output = 'User was already present'
+}
+Set-Attr $result 'User' $output
 
 #endregion CreateUser
 
 #region AddtoGroups
 $outArray = New-Object -TypeName System.Collections.ArrayList
+$outArrayNice = '' | Select-Object -Property failed,successful
 
 $outarray.add($(Add-toGroup -username $SharedAdminGroup -groups 'RA301-MASTERTest-SharedAdminAccess' -IsGroup))
-
 $outarray.add($(Add-toGroup -username $RDPUserGroup -groups 'RA301-MASTERTest-RDPUsers' -IsGroup))
 $outarray.add($(Add-toGroup -username $($user.SAM) -groups $SharedAdminGroup))
 $outarray.add($(Add-toGroup -username $($user.SAM) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")))
 
-Set-Attr $result 'GroupsAdded' $outarray
+foreach ($item in $outarray)
+{
+
+  $outArrayNice.failed += $item.failed
+  $outArrayNice.successful += $item.successful
+
+}
+
+
+Set-Attr $result 'GroupsAdded' $outarrayNice
 #endregion AddtoGroups
 
 
