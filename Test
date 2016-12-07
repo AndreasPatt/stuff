@@ -500,13 +500,15 @@ $InvokeGetADuser = {
 #endregion CreateUser
 
 #region AddtoGroups
+$outArray = New-Object -TypeName System.Collections.ArrayList
 
-$out = Add-toGroup -username $SharedAdminGroup -groups 'RA301-MASTERTest-SharedAdminAccess' -IsGroup
-$out += Add-toGroup -username $RDPUserGroup -groups 'RA301-MASTERTest-RDPUsers' -IsGroup
-$out += Add-toGroup -username $($user.SAM) -groups $SharedAdminGroup
-$out += Add-toGroup -username $($user.SAM) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")
+$outarray.add($(Add-toGroup -username $SharedAdminGroup -groups 'RA301-MASTERTest-SharedAdminAccess' -IsGroup))
 
-Set-Attr $result 'Groups' $out
+$outarray.add($(Add-toGroup -username $RDPUserGroup -groups 'RA301-MASTERTest-RDPUsers' -IsGroup))
+$outarray.add($(Add-toGroup -username $($user.SAM) -groups $SharedAdminGroup))
+$outarray.add($(Add-toGroup -username $($user.SAM) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")))
+
+Set-Attr $result 'Groups' $outarray
 #endregion AddtoGroups
 
 
