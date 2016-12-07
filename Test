@@ -362,7 +362,7 @@ function add-toGroup {
       else
       {
         $GetUserObj = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock { $user = get-aduser $args[0]; return $user } -args $Username -ErrorAction Stop
-        String]$GetUser = $getuserobj.Name
+        [String]$GetUser = $getuserobj.Name
       }
       
       
