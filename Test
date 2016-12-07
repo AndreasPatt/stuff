@@ -389,7 +389,7 @@ function add-toGroup {
 #region ansiblestuff
 #create result-object
 $result = New-Object psobject @{
-  changed = $false
+  changed = $false; Groups=''; User='';
 };
 ### Get DomainController
 [String]$DomainControllerFQDN = (Get-ADDomainController -Discover).hostname
@@ -433,7 +433,7 @@ $user.GID = Get-AnsibleParam $params 'GID' -failifempty $true
 $User.GID = $User.GID.ToUpper()
 $user.Description = Get-AnsibleParam $params 'Description' -failifempty $true
 $user.ProjectOU = Get-AnsibleParam $params 'ProjectOU' -failifempty $true
-$user.Groups = Get-AnsibleParam $params 'Groups'
+
 $user.Email = Get-AnsibleParam $params 'Email' -failifempty $true
 #endregion Get-CloudRessourceManager
 
