@@ -356,7 +356,7 @@ function add-toGroup {
     Try {
       if ($isgroup)
       {
-        $GetUserObj = Get-ADgroup $username
+        $GetUserObj = Get-ADgroup $Username
         [String]$GetUser = $getuserobj.Name
       }
       else
@@ -366,7 +366,7 @@ function add-toGroup {
       }
       
       
-      Add-ADGroupMember -Identity (Get-ADGroup $group -Credential $credentials -Server $DomainControllerFQDN) -Members $GetUser.Name -Server $DomainControllerFQDN -Credential $Credentials
+      Add-ADGroupMember -Identity (Get-ADGroup $group -Credential $credentials -Server $DomainControllerFQDN) -Members $GetUser -Server $DomainControllerFQDN -Credential $Credentials
     }
     catch {
       $GroupMappingError = $true
