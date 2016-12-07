@@ -391,7 +391,8 @@ function add-toGroup {
 $result = New-Object psobject @{
   changed = $false
 };
-
+### Get DomainController
+[String]$DomainControllerFQDN = (Get-ADDomainController -Discover).hostname
 
 ### Get the parameters
 $params = Parse-Args $args;
