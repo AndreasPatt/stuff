@@ -389,7 +389,7 @@ function add-toGroup {
 #region ansiblestuff
 #create result-object
 $result = New-Object psobject @{
-  changed = $false; Groups=''; User='';
+  changed = $false; Groups=''; User='';GroupsAdded = '';
 };
 ### Get DomainController
 [String]$DomainControllerFQDN = (Get-ADDomainController -Discover).hostname
@@ -508,7 +508,7 @@ $outarray.add($(Add-toGroup -username $RDPUserGroup -groups 'RA301-MASTERTest-RD
 $outarray.add($(Add-toGroup -username $($user.SAM) -groups $SharedAdminGroup))
 $outarray.add($(Add-toGroup -username $($user.SAM) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")))
 
-Set-Attr $result 'Groups' $outarray
+Set-Attr $result 'GroupsAdded' $outarray
 #endregion AddtoGroups
 
 
