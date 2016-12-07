@@ -472,7 +472,7 @@ $InvokeGetADuser = {
     Get-aduser $args[0] -ErrorAction stop
     
   }
-  catch [ADIdentityNotFoundException]
+  catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException]
   {
     return 'absent'
   }
