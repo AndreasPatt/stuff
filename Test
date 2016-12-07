@@ -1,0 +1,514 @@
+#!powershell
+# WANT_JSON
+# POWERSHELL_COMMON
+
+<# 
+    Author: Andreas Patt
+    Orange Networks GmbH
+    https://orange-networks.com
+
+    History:
+    v1.0 initial draft for ansible
+
+#>
+
+#region functions
+
+function New-Group
+{
+  param
+  (
+    [Parameter(Mandatory=$true)]
+    $Groups,
+    [parameter(Mandatory = $true)]
+    $ProjectOU
+  )
+
+  $returnObj = '' | Select-Object -Property successful, failed
+  $returnObj.successful = New-Object System.Collections.ArrayList
+  $returnObj.failed = New-Object System.Collections.ArrayList
+
+  # Generate OU
+  $ProjectOULDAP = "OU=GroupsAdministrative,OU=_Central,OU=$($ProjectOU),OU=RA301"
+
+  $searchbase = 'DC=ad003,DC=siemens,DC=net'
+
+  $InvokeADSIExists = {
+
+    return [ADSI]::Exists("LDAP://$($args[0])")
+  }
+
+  $ProjectOULDAP2 = "$ProjectOULDAP,$searchbase"
+  $check = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock $InvokeADSIExists -args $ProjectOULDAP2 -ErrorAction Stop
+
+
+  if ($Check)
+  {
+    $SplitGroups = $groups
+
+    foreach ($Group in $SplitGroups)
+    {
+
+      $GroupName = $group
+      $GroupExistsLDAP = "CN=$($GroupName),$($ProjectOULDAP),$($searchbase)"
+      $GroupExists = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock $InvokeADSIExists -args $GroupExistsLDAP -ErrorAction Stop
+
+      if ($Groupexists)
+      {
+        $null = $returnObj.successful.Add($GroupName)
+      }
+      else
+      {
+        try
+        {
+          New-ADGroup -Name $GroupName -GroupScope global -Path ($($ProjectOULDAP)+','+$($searchbase)) -Credential $Credentials
+        }
+        catch
+        {
+          $null = $returnobj.failed.add($GroupName)
+          return
+        }
+        $null = $returnObj.successful.add($GroupName)
+
+      }
+
+    }
+
+  }
+  else
+  {
+    Exit-json 'ProjectOU could not be found'
+
+  }
+  return $returnObj
+}
+
+Function Test-Credential { 
+  [OutputType([Bool])] 
+     
+  Param ( 
+    [Parameter( 
+        Mandatory = $true, 
+        ValueFromPipeLine = $true, 
+        ValueFromPipelineByPropertyName = $true 
+    )] 
+    [Alias( 
+        'PSCredential' 
+    )] 
+    [ValidateNotNull()] 
+    [System.Management.Automation.PSCredential] 
+    [System.Management.Automation.Credential()] 
+    $Credential = [System.Management.Automation.PSCredential]::Empty, 
+ 
+    [Parameter()] 
+    [String] 
+    $Domain = $env:USERDOMAIN 
+  ) 
+ 
+  Begin { 
+    [void][System.Reflection.Assembly]::LoadWithPartialName('System.DirectoryServices.AccountManagement') 
+    $principalContext = New-Object System.DirectoryServices.AccountManagement.PrincipalContext([System.DirectoryServices.AccountManagement.ContextType]::Domain, $Domain) 
+  } 
+ 
+  Process { 
+    $networkCredetial = $Credential.GetNetworkCredential() 
+    return $principalContext.ValidateCredentials($networkCredetial.UserName, $networkCredetial.Password) 
+  } 
+ 
+  End { 
+    $principalContext.Dispose() 
+  } 
+}
+
+function Add-User {
+  param(
+    $User,
+    $creds
+  )
+    
+     
+  $Displayname = $user.sam           
+  $UserFirstname = $User.Firstname            
+  $UserLastname = $User.Lastname            
+  [String]$OU = $User.OU            
+  $SAM = $User.SAM            
+  $UPN = $User.UPN            
+  $Description = $User.Description            
+  $Password = $User.Password 
+  $attribute2 = $user.gid.toupper()+'@siemens.cloud'    
+  $otherAttributes = @{'msDS-cloudExtensionAttribute1'= $user.gid.toUpper(); 'msDS-cloudExtensionAttribute2' = $attribute2; 'msDS-cloudExtensionAttribute3' = $user.email }
+    
+  $CreateUserError = $false  
+
+          
+  try {            
+    New-ADUser -Name "$Displayname" -DisplayName "$Displayname" -SamAccountName $SAM -UserPrincipalName $UPN -GivenName "$UserFirstname" -Surname "$UserLastname" -Description "$Description" -AccountPassword (ConvertTo-SecureString -String $Password -AsPlainText -Force) -Server $DomainControllerFQDN -Path "$OU" -credential $creds -OtherAttributes $otherAttributes -EmailAddress $user.Email 
+  	
+  }
+
+  catch {
+          
+    $CreateUserError = $true
+    [String]$ErrorText = $Error
+    Fail-Json $result $ErrorText
+  }
+  IF (!($CreateUserError)) {
+    ## Just go on, if no error
+  }
+  
+}
+  
+  
+function New-SWRandomPassword {
+  <#
+      .Synopsis
+      Generates one or more complex passwords designed to fulfill the requirements for Active Directory
+      .DESCRIPTION
+      Generates one or more complex passwords designed to fulfill the requirements for Active Directory
+      .EXAMPLE
+      New-SWRandomPassword
+      C&3SX6Kn
+  
+      Will generate one password with a length between 8  and 12 chars.
+      .EXAMPLE
+      New-SWRandomPassword -MinPasswordLength 8 -MaxPasswordLength 12 -Count 4
+      7d&5cnaB
+      !Bh776T"Fw
+      9"C"RxKcY
+      %mtM7#9LQ9h
+  
+      Will generate four passwords, each with a length of between 8 and 12 chars.
+      .EXAMPLE
+      New-SWRandomPassword -InputStrings abc, ABC, 123 -PasswordLength 4
+      3ABa
+  
+      Generates a password with a length of 4 containing atleast one char from each InputString
+      .EXAMPLE
+      New-SWRandomPassword -InputStrings abc, ABC, 123 -PasswordLength 4 -FirstChar abcdefghijkmnpqrstuvwxyzABCEFGHJKLMNPQRSTUVWXYZ
+      3ABa
+  
+      Generates a password with a length of 4 containing atleast one char from each InputString that will start with a letter from 
+      the string specified with the parameter FirstChar
+      .OUTPUTS
+      [String]
+      .NOTES
+      Written by Simon WÃ¥hlin, blog.simonw.se
+      I take no responsibility for any issues caused by this script.
+      .FUNCTIONALITY
+      Generates random passwords
+      .LINK
+      http://blog.simonw.se/powershell-generating-random-password-for-active-directory/
+     
+  #>
+  [CmdletBinding(DefaultParameterSetName='FixedLength',ConfirmImpact='None')]
+  [OutputType([String])]
+  Param
+  (
+    # Specifies minimum password length
+    [Parameter(Mandatory=$false,
+    ParameterSetName='RandomLength')]
+    [ValidateScript({$_ -gt 0})]
+    [Alias('Min')] 
+    [int]$MinPasswordLength = 8,
+          
+    # Specifies maximum password length
+    [Parameter(Mandatory=$false,
+    ParameterSetName='RandomLength')]
+    [ValidateScript({
+          if($_ -ge $MinPasswordLength){$true}
+    else{Throw 'Max value cannot be lesser than min value.'}})]
+    [Alias('Max')]
+    [int]$MaxPasswordLength = 12,
+  
+    # Specifies a fixed password length
+    [Parameter(Mandatory=$false,
+    ParameterSetName='FixedLength')]
+    [ValidateRange(1,2147483647)]
+    [int]$PasswordLength = 8,
+          
+    # Specifies an array of strings containing charactergroups from which the password will be generated.
+    # At least one char from each group (string) will be used.
+    [String[]]$InputStrings = @('abcdefghijkmnpqrstuvwxyz', 'ABCEFGHJKLMNPQRSTUVWXYZ', '23456789', '!$#%&'),
+  
+    # Specifies a string containing a character group from which the first character in the password will be generated.
+    # Useful for systems which requires first char in password to be alphabetic.
+    [String] $FirstChar,
+          
+    # Specifies number of passwords to generate.
+    [ValidateRange(1,2147483647)]
+    [int]$Count = 1
+  )
+  Begin {
+    Function Get-Seed{
+      # Generate a seed for randomization
+      $RandomBytes = New-Object -TypeName 'System.Byte[]' 4
+      $Random = New-Object -TypeName 'System.Security.Cryptography.RNGCryptoServiceProvider'
+      $Random.GetBytes($RandomBytes)
+      [BitConverter]::ToUInt32($RandomBytes, 0)
+    }
+  }
+  Process {
+    For($iteration = 1;$iteration -le $Count; $iteration++){
+      $Password = @{}
+      # Create char arrays containing groups of possible chars
+      [char[][]]$CharGroups = $InputStrings
+  
+      # Create char array containing all chars
+      $AllChars = $CharGroups | ForEach-Object {[Char[]]$_}
+  
+      # Set password length
+      if($PSCmdlet.ParameterSetName -eq 'RandomLength')
+      {
+        if($MinPasswordLength -eq $MaxPasswordLength) {
+          # If password length is set, use set length
+          $PasswordLength = $MinPasswordLength
+        }
+        else {
+          # Otherwise randomize password length
+          $PasswordLength = ((Get-Seed) % ($MaxPasswordLength + 1 - $MinPasswordLength)) + $MinPasswordLength
+        }
+      }
+  
+      # If FirstChar is defined, randomize first char in password from that string.
+      if($PSBoundParameters.ContainsKey('FirstChar')){
+        $Password.Add(0,$FirstChar[((Get-Seed) % $FirstChar.Length)])
+      }
+      # Randomize one char from each group
+      Foreach($Group in $CharGroups) {
+        if($Password.Count -lt $PasswordLength) {
+          $Index = Get-Seed
+          While ($Password.ContainsKey($Index)){
+            $Index = Get-Seed                        
+          }
+          $Password.Add($Index,$Group[((Get-Seed) % $Group.Count)])
+        }
+      }
+  
+      # Fill out with chars from $AllChars
+      for($i=$Password.Count;$i -lt $PasswordLength;$i++) {
+        $Index = Get-Seed
+        While ($Password.ContainsKey($Index)){
+          $Index = Get-Seed                        
+        }
+        $Password.Add($Index,$AllChars[((Get-Seed) % $AllChars.Count)])
+      }
+      Write-Output -InputObject $(-join ($Password.GetEnumerator() | Sort-Object -Property Name | Select-Object -ExpandProperty Value))
+    }
+  }
+}
+  
+  
+  
+function New-PersonalUser {
+  param(
+    [object]$user
+  ) 
+  
+  
+  $user.Password = New-SWRandomPassword -PasswordLength 20
+  
+  ## Generate SAM Accountname
+  
+  $user.SAM = $user.GID
+  
+  ## Generate UPN
+  $user.UPN = $user.GID+'@siemens.cloud'
+    
+  ## Generate OU
+  $user.OU = "OU=UsersFunctional,OU=_Central,OU=$($user.ProjectOU),OU=RA301,DC=ad003,DC=siemens,DC=net"
+    
+  
+  Add-User -User $user -creds $Credentials
+  
+  return $user | Select-Object -Property UPN, Firstname, Lastname, GID, Email,  ProjectOU, Description
+  
+}
+
+function add-toGroup {
+
+  param(
+    $Username,
+    $Groups,
+    [switch]$isgroup
+  )
+  $group = $null
+
+  #ReturnObject
+  $returnObj = '' | Select-Object -Property successful, failed
+  $returnObj.successful = New-Object System.Collections.ArrayList
+  $returnObj.failed = New-Object System.Collections.ArrayList
+
+  $SplitGroup = $groups.split(',')
+
+
+
+  foreach ( $group in $SplitGroup)
+  {
+    $Check = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock { [String]$group = $args[0].ToString();  return [bool](Get-ADObject -Filter {(Name -eq $group) -and (ObjectClass -eq 'group')} -Credential $args[1])} -args $group,$credentials -ErrorAction Stop
+  
+    if (!($Check))
+    {
+      $null = $returnobj.failed.add($group)
+      return
+    }
+  
+    $GroupMappingError = $false
+    Try {
+      if ($isgroup)
+      {
+        $GetUser = Get-ADgroup $username
+      }
+      else
+      {
+        $GetUser = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock { $user = get-aduser $args[0]; return $user } -args $Username -ErrorAction Stop
+      }
+      
+      
+      Add-ADGroupMember -Identity (Get-ADGroup $group -Credential $credentials -Server $DomainControllerFQDN) -Members $GetUser.Name -Server $DomainControllerFQDN -Credential $Credentials
+    }
+    catch {
+      $GroupMappingError = $true
+      $null = $returnobj.failed.add($group)
+    }
+
+    IF (!($GroupMappingError)){
+
+      $null = $returnObj.successful.add($group)
+    }
+    
+  }
+
+  return $returnObj
+
+
+}
+
+
+#endregion functions
+
+#region ansiblestuff
+#create result-object
+$result = New-Object psobject @{
+  changed = $false
+};
+
+
+### Get the parameters
+$params = Parse-Args $args;
+    
+###Create Credentials Object
+$DomainUsername = Get-AnsibleParam $params 'DomainUsername' -failifempty $true
+$DomainPassword = Get-AnsibleParam $params 'DomainPassword' -failifempty $true
+$DomainName = Get-AnsibleParam $params 'DomainName' -failifempty $true
+##Build Credentialsobject for AD Administration
+$SecurePassword = $DomainPassword| ConvertTo-SecureString -AsPlainText -Force
+$Credentials = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $DomainUsername, $SecurePassword
+
+##Get Data
+$AWSAccountnumber = Get-AnsibleParam $params 'AWSAccountNumber' -failifempty $true
+$ProjectOU = get-ansibleparam $params 'ProjectOU' -failifempty $true
+
+##Get Credentials for CredSSP
+$ansibleUserWithAT = Get-AnsibleParam $params 'AnsibleUser' -failifempty $true
+$ansiblePW = Get-AnsibleParam $params 'AnsiblePW' -failifempty $true
+
+### Remove @ from Username
+$ansibleUserTemp = $ansibleUserWithAT.split('@')
+$AnsibleUser = $ansibleUserTemp[0]
+
+##Build Credentialsobject for CredSSP
+$SecurePassword2 = $ansiblepw | ConvertTo-SecureString -AsPlainText -Force
+$CredSSPCreds = New-Object -TypeName System.Management.Automation.PSCredential -ArgumentList $ansibleUser, $SecurePassword2
+
+#endregion ansiblestuff
+
+
+#region Get-CloudRessourceManager
+###Build $User Object
+$user = '' | Select-Object -Property Firstname,Lastname,OU,SAM, Description, Password, GID, ProjectOU, UPN, Groups, Email
+$user.Firstname = Get-AnsibleParam $params 'FirstName' -failifempty $true
+$user.Lastname = Get-AnsibleParam $params 'LastName' -failifempty $true
+$user.GID = Get-AnsibleParam $params 'GID' -failifempty $true
+$User.GID = $User.GID.ToUpper()
+$user.Description = Get-AnsibleParam $params 'Description' -failifempty $true
+$user.ProjectOU = Get-AnsibleParam $params 'ProjectOU' -failifempty $true
+$user.Groups = Get-AnsibleParam $params 'Groups'
+$user.Email = Get-AnsibleParam $params 'Email' -failifempty $true
+#endregion Get-CloudRessourceManager
+
+
+#region CreateGroups
+  
+$Groups = New-Object System.Collections.ArrayList
+
+##These are the AWS standard roles, configured by Hyperion
+$AwSRoles = 'OPS_CloudResourceManager,OPS_QualityISECAdviser,OPS_CloudAdminEngineer,OPS_CommercialSupport,OPS_CustomerCareAgent'
+$AWSRolesArray = $AwSRoles.Split(',')
+
+foreach ($item in $AwsRolesArray)
+{
+  $Groupname = "AWS-$AWSAccountNumber-$item"
+  $null = $groups.add($Groupname)
+}
+
+$SharedAdminGroup = "RA301-$ProjectOU"+'-SharedAdminAccess'
+$null = $Groups.Add($SharedAdminGroup)
+
+$RDPUserGroup = "RA301-$ProjectOU"+'-RDPUsers'
+$null = $Groups.Add($RDPUserGroup)
+
+$groupreturn = New-Group -Groups $groups -ProjectOU $ProjectOU
+
+Set-Attr $result 'Groups' $groupreturn 
+#endregion CreateGroups
+
+
+#region CreateUser
+### Create the user if not already present
+  
+$InvokeGetADuser = {
+  try
+  {
+    Get-aduser $args[0] -ErrorAction stop
+    
+  }
+  catch [ADIdentityNotFoundException]
+  {
+    return 'absent'
+  }
+  return 'present'
+    
+    
+}
+  
+  
+  
+  
+  $Check = Invoke-Command -ComputerName $env:computername -Credential $CredSSPCreds -Authentication Credssp -ScriptBlock $InvokeGetADuser  -args $user.GID -ErrorAction Stop
+  
+  if ($check -eq 'absent')
+  {
+    $output = New-PersonalUser -user $user
+  }
+  else
+  {
+    $Output = 'User was already present'
+  }
+  Set-Attr $result 'User' $output
+
+#endregion CreateUser
+
+#region AddtoGroups
+
+$out = Add-toGroup -username $SharedAdminGroup -groups 'RA301-MASTERTest-SharedAdminAccess' -IsGroup
+$out += Add-toGroup -username $RDPUserGroup -groups 'RA301-MASTERTest-RDPUsers' -IsGroup
+$out += Add-toGroup -username $($user.SAM) -groups $SharedAdminGroup
+$out += Add-toGroup -username $($user.SAM) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")
+
+Set-Attr $result 'Groups' $out
+#endregion AddtoGroups
+
+
+$result.changed = $true
+
+exit-json $result
