@@ -356,7 +356,7 @@ function add-toGroup {
     Try {
       if ($isgroup)
       {
-        $GetUserObj = Get-ADgroup $Username
+        $GetUserObj = Get-ADgroup $Username -Server $DomainControllerFQDN -Credential $credentials
         [String]$GetUser = $getuserobj.Name
       }
       else
