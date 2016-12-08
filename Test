@@ -507,8 +507,8 @@ $outArrayNice = '' | Select-Object -Property failed,successful
 
 $outarray.add($(Add-toGroup -username $SharedAdminGroup -groups 'RA301-MASTERTest-SharedAdminAccess' -IsGroup))
 $outarray.add($(Add-toGroup -username $RDPUserGroup -groups 'RA301-MASTERTest-RDPUsers' -IsGroup))
-$outarray.add($(Add-toGroup -username $($user.SAM) -groups $SharedAdminGroup))
-$outarray.add($(Add-toGroup -username $($user.SAM) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")))
+$outarray.add($(Add-toGroup -username $($user.GID) -groups $SharedAdminGroup))
+$outarray.add($(Add-toGroup -username $($user.GID) -groups $("AWS-$AWSAccountNumber-OPS_CloudResourceManager")))
 
 foreach ($item in $outarray)
 {
