@@ -371,6 +371,8 @@ function add-toGroup {
     catch {
       $GroupMappingError = $true
       $null = $returnobj.failed.add($group)
+          [String]$ErrorText = $Error
+          Fail-Json $result $ErrorText
     }
 
     IF (!($GroupMappingError)){
