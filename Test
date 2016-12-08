@@ -396,7 +396,7 @@ $result = New-Object psobject @{
   changed = $false; Groups=''; User='';GroupsAdded = '';
 };
 ### Get DomainController
-[STRING]$DomainControllerFQDN = $((Get-ADDomain).PDCEmulator)
+[String]$DomainControllerFQDN = (Get-ADDomainController -Discover).hostname
 
 ### Get the parameters
 $params = Parse-Args $args;
